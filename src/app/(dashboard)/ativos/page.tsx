@@ -189,7 +189,7 @@ export default function AtivosPage() {
         return matchesSearch && matchesCategory && matchesLabelState;
     });
 
-    const toggleAssetSelection = (id: string, e: React.MouseEvent) => {
+    const toggleAssetSelection = (id: string, e: any) => {
         e.stopPropagation();
         const newSet = new Set(selectedAssetsIds);
         if (newSet.has(id)) {
