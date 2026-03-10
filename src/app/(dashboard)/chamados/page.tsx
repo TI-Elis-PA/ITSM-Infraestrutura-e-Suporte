@@ -358,5 +358,3 @@ export default function ChamadosPage() {
     );
 }
 
-// === Mocks ===
-// Remove mockTickets completely

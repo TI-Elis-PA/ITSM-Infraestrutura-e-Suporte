@@ -4,12 +4,7 @@ import React, { useState } from 'react';
 import { Calendar, AlertCircle, CheckCircle, Clock, Server, Monitor, ShieldCheck, BatteryWarning } from 'lucide-react';
 
 export default function SLA_Calendar_Page() {
-    const [events, setEvents] = useState([
-        { id: 1, date: '10/Mar', type: 'SLA', title: 'Renovação Link Claro (Dedicado)', status: 'warning', icon: <Server size={18} /> },
-        { id: 2, date: '15/Mar', type: 'Manutenção', title: 'Troca de Baterias Nobreaks (Galpão 3)', status: 'urgent', icon: <BatteryWarning size={18} /> },
-        { id: 3, date: '22/Mar', type: 'Licença', title: 'Renovação Licenças Antivírus Kaspesky', status: 'normal', icon: <ShieldCheck size={18} /> },
-        { id: 4, date: '05/Abr', type: 'SLA', title: 'Fim da Garantia Servidor Dell R740', status: 'normal', icon: <Monitor size={18} /> },
-    ]);
+    const [events, setEvents] = useState<any[]>([]);
 
     return (
         <div className="p-8 space-y-8 max-w-7xl mx-auto">
@@ -62,16 +57,16 @@ export default function SLA_Calendar_Page() {
                             <div key={event.id} className="relative pl-12 group">
                                 {/* Timeline Dot */}
                                 <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-4 border-white shadow-sm z-10 ${event.status === 'urgent' ? 'bg-rose-500' :
-                                        event.status === 'warning' ? 'bg-amber-500' : 'bg-indigo-500'
+                                    event.status === 'warning' ? 'bg-amber-500' : 'bg-indigo-500'
                                     }`}></div>
 
                                 {/* Event Card */}
                                 <div className={`p-5 rounded-2xl border bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 relative overflow-hidden ${event.status === 'urgent' ? 'border-rose-200 hover:border-rose-300' :
-                                        event.status === 'warning' ? 'border-amber-200 hover:border-amber-300' : 'border-slate-100 hover:border-indigo-200'
+                                    event.status === 'warning' ? 'border-amber-200 hover:border-amber-300' : 'border-slate-100 hover:border-indigo-200'
                                     }`}>
                                     <div className="flex items-center gap-4 relative z-10">
                                         <div className={`p-3 rounded-xl ${event.status === 'urgent' ? 'bg-rose-100 text-rose-600' :
-                                                event.status === 'warning' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-600'
+                                            event.status === 'warning' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-600'
                                             }`}>
                                             {event.icon}
                                         </div>
@@ -86,7 +81,7 @@ export default function SLA_Calendar_Page() {
                                     <div className="relative z-10 sm:text-right border-t sm:border-0 border-slate-100 pt-3 sm:pt-0">
                                         <p className="text-sm font-bold text-slate-700">Data Limite</p>
                                         <p className={`text-lg font-black ${event.status === 'urgent' ? 'text-rose-600' :
-                                                event.status === 'warning' ? 'text-amber-500' : 'text-indigo-600'
+                                            event.status === 'warning' ? 'text-amber-500' : 'text-indigo-600'
                                             }`}>{event.date}</p>
                                     </div>
 

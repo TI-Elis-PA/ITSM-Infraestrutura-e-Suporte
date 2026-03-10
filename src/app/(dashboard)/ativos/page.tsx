@@ -10,6 +10,9 @@ export default function AtivosPage() {
     const [selectedCategory, setSelectedCategory] = useState("");
     const [selectedAsset, setSelectedAsset] = useState<any>(null);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [selectedAssetsIds, setSelectedAssetsIds] = useState<Set<string>>(new Set());
+    const [filterHasLabel, setFilterHasLabel] = useState<string>("all");
 
     // Supabase States
     const [assets, setAssets] = useState<any[]>([]);
@@ -19,8 +22,9 @@ export default function AtivosPage() {
     // Form States
     const [formData, setFormData] = useState({
         name: '', category: 'Computador', brand: '', model: '',
-        mac_address: '', ip_address: '', condition: 'Novo', location: ''
+        mac_address: '', ip_address: '', condition: 'Novo', location: '', has_label: false
     });
+    const [customCategory, setCustomCategory] = useState("");
 
     // Fetch Assets
     const fetchAssets = async () => {
@@ -44,32 +48,130 @@ export default function AtivosPage() {
 
     // Handle Save
     const handleSaveAsset = async () => {
-        if (!formData.name || !formData.category) return;
-        setIsSaving(true);
-        const { data, error } = await supabase
-            .from('ativos')
-            .insert([{
-                name: formData.name,
-                category: formData.category,
-                brand: formData.brand,
-                model: formData.model,
-                mac_address: formData.mac_address,
-                ip_address: formData.ip_address,
-                condition: formData.condition,
-                location: formData.location,
-                status: 'Ativo'
-            }])
-            .select();
+        const finalCategory = formData.category === 'Outra (Digitar)' ? customCategory : formData.category;
 
-        if (error) {
-            console.error('Erro ao salvar:', error);
+        if (!formData.name || !finalCategory) return;
+        setIsSaving(true);
+
+        const payload: any = {
+            name: formData.name,
+            category: finalCategory,
+            brand: formData.brand,
+            model: formData.model,
+            mac_address: formData.mac_address,
+            ip_address: formData.ip_address,
+            condition: formData.condition,
+            location: formData.location,
+            has_label: formData.has_label
+        };
+
+        let queryError = null;
+
+        if (editingId) {
+            const { error } = await supabase
+                .from('ativos')
+                .update(payload)
+                .eq('id', editingId);
+            queryError = error;
+        } else {
+            const { error } = await supabase
+                .from('ativos')
+                .insert([{ ...payload, status: 'Ativo' }]);
+            queryError = error;
+        }
+
+        if (queryError) {
+            console.error('Erro ao salvar:', queryError);
             alert('Falha ao salvar ativo.');
         } else {
-            setFormData({ name: '', category: 'Computador', brand: '', model: '', mac_address: '', ip_address: '', condition: 'Novo', location: '' });
+            setFormData({ name: '', category: 'Computador', brand: '', model: '', mac_address: '', ip_address: '', condition: 'Novo', location: '', has_label: false });
+            setCustomCategory('');
+            setEditingId(null);
             setIsAddModalOpen(false);
+            if (editingId && selectedAsset) {
+                setSelectedAsset({ ...selectedAsset, ...payload });
+            }
             fetchAssets(); // Refresh list
         }
         setIsSaving(false);
+    };
+
+    const handlePrintBulkLabels = async (assetsToPrint: any[]) => {
+        if (!assetsToPrint || assetsToPrint.length === 0) return;
+        const printWindow = window.open('', '_blank', 'width=800,height=800');
+        if (!printWindow) return;
+
+        const labelsHTML = assetsToPrint.map(asset => `
+            <div class="label">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=110x110&margin=0&data=itsm://asset/${asset.id}" alt="QR Code" style="width: 100px; height: 100px;" />
+                <div class="asset-name">${asset.name}</div>
+                <div class="asset-desc">${asset.brand} ${asset.model}</div>
+                <div class="asset-desc">${asset.mac_address || asset.ip_address || asset.category}</div>
+                <div class="company">TI Elis PA &bull; Patrimônio</div>
+            </div>
+        `).join('');
+
+        printWindow.document.write(`
+            <html>
+                <head>
+                    <title>ITSM Print - Geração em Lote</title>
+                    <style>
+                        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background: #fff; }
+                        .print-grid {
+                            display: grid;
+                            grid-template-columns: repeat(3, 1fr);
+                            gap: 10px;
+                            padding: 15px;
+                        }
+                        .label { 
+                            border: 2px dashed #cbd5e1; 
+                            padding: 16px; 
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            justify-content: center;
+                            width: 60mm; 
+                            height: 40mm; 
+                            border-radius: 8px;
+                            box-sizing: border-box;
+                            page-break-inside: avoid;
+                        }
+                        .asset-name { font-weight: bold; font-size: 14px; margin: 8px 0 2px 0; color: #0f172a; text-align: center; }
+                        .asset-desc { font-size: 10px; font-family: monospace; color: #475569; margin-bottom: 2px; text-align: center; }
+                        .company { font-size: 8px; font-weight: bold; color: #94a3b8; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; text-align: center; }
+                        @media print {
+                            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                            .label { border: 1px solid #000; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="print-grid">
+                        ${labelsHTML}
+                    </div>
+                    <script>
+                        window.onload = () => {
+                            setTimeout(() => {
+                                window.print();
+                                window.close();
+                            }, 500);
+                        };
+                    </script>
+                </body>
+            </html>
+        `);
+        printWindow.document.close();
+
+        // Optional: Update 'has_label' status in DB after printing
+        const idsToUpdate = assetsToPrint.map(a => a.id);
+        await supabase.from('ativos').update({ has_label: true }).in('id', idsToUpdate);
+        setSelectedAssetsIds(new Set());
+        fetchAssets();
+    };
+
+    const handlePrintLabel = () => {
+        if (!selectedAsset) return;
+        handlePrintBulkLabels([selectedAsset]);
     };
 
     // Filter Logic
@@ -80,8 +182,31 @@ export default function AtivosPage() {
 
         const matchesCategory = selectedCategory === "" || asset.category === selectedCategory;
 
-        return matchesSearch && matchesCategory;
+        let matchesLabelState = true;
+        if (filterHasLabel === "yes") matchesLabelState = asset.has_label === true;
+        if (filterHasLabel === "no") matchesLabelState = asset.has_label !== true; // Handles false or null
+
+        return matchesSearch && matchesCategory && matchesLabelState;
     });
+
+    const toggleAssetSelection = (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const newSet = new Set(selectedAssetsIds);
+        if (newSet.has(id)) {
+            newSet.delete(id);
+        } else {
+            newSet.add(id);
+        }
+        setSelectedAssetsIds(newSet);
+    };
+
+    const toggleAllSelection = () => {
+        if (selectedAssetsIds.size === filteredAssets.length) {
+            setSelectedAssetsIds(new Set());
+        } else {
+            setSelectedAssetsIds(new Set(filteredAssets.map(a => a.id)));
+        }
+    };
 
     return (
         <div className="p-8">
@@ -95,13 +220,44 @@ export default function AtivosPage() {
                     <p className="text-slate-500 mt-1 font-medium">Gestão de Hardware, Modelos e Conservação</p>
                 </div>
                 <button
-                    onClick={() => setIsAddModalOpen(true)}
+                    onClick={() => {
+                        setEditingId(null);
+                        setFormData({ name: '', category: 'Computador', brand: '', model: '', mac_address: '', ip_address: '', condition: 'Novo', location: '', has_label: false });
+                        setIsAddModalOpen(true);
+                    }}
                     className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-5 py-2.5 rounded-xl font-medium transition-all shadow-[0_4px_14px_0_rgba(99,102,241,0.39)] hover:shadow-[0_6px_20px_rgba(99,102,241,0.5)] flex items-center gap-2 transform hover:-translate-y-0.5"
                 >
                     <Plus size={18} />
                     Cadastrar Ativo
                 </button>
             </div>
+
+            {/* BULK ACTIONS */}
+            {selectedAssetsIds.size > 0 && (
+                <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl flex items-center justify-between mb-6 animate-in fade-in slide-in-from-top-2">
+                    <span className="text-indigo-800 font-semibold text-sm">
+                        {selectedAssetsIds.size} ativo(s) selecionado(s)
+                    </span>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={toggleAllSelection}
+                            className="px-4 py-2 text-indigo-600 hover:bg-indigo-100 rounded-lg text-sm font-medium transition"
+                        >
+                            Limpar Seleção
+                        </button>
+                        <button
+                            onClick={() => {
+                                const assetsToPrint = assets.filter(a => selectedAssetsIds.has(a.id));
+                                handlePrintBulkLabels(assetsToPrint);
+                            }}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 shadow-sm"
+                        >
+                            <QrCode size={16} />
+                            Imprimir {selectedAssetsIds.size} Etiqueta(s)
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* FILTERS */}
             <div className="glass-panel p-4 rounded-2xl flex flex-col md:flex-row gap-4 mb-6 relative z-10">
@@ -116,6 +272,15 @@ export default function AtivosPage() {
                     />
                 </div>
                 <div className="flex gap-2">
+                    <select
+                        value={filterHasLabel}
+                        onChange={(e) => setFilterHasLabel(e.target.value)}
+                        className="px-4 py-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-medium cursor-pointer"
+                    >
+                        <option value="all">Todas as Etiquetas</option>
+                        <option value="yes">Com Etiqueta Impressa</option>
+                        <option value="no">Sem Etiqueta (Pendente)</option>
+                    </select>
                     <select
                         value={selectedCategory}
                         onChange={(e) => setSelectedCategory(e.target.value)}
@@ -139,8 +304,17 @@ export default function AtivosPage() {
                         <table className="w-full text-left">
                             <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-xs uppercase tracking-wider">
                                 <tr>
+                                    <th className="px-6 py-4 font-semibold w-12 text-center">
+                                        <input
+                                            type="checkbox"
+                                            className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                                            checked={filteredAssets.length > 0 && selectedAssetsIds.size === filteredAssets.length}
+                                            onChange={toggleAllSelection}
+                                        />
+                                    </th>
                                     <th className="px-6 py-4 font-semibold">Equipamento</th>
                                     <th className="px-6 py-4 font-semibold">Rede</th>
+                                    <th className="px-6 py-4 font-semibold">Etiqueta</th>
                                     <th className="px-6 py-4 font-semibold">Localização</th>
                                     <th className="px-6 py-4 font-semibold">Status</th>
                                 </tr>
@@ -148,14 +322,14 @@ export default function AtivosPage() {
                             <tbody className="divide-y divide-slate-100">
                                 {isLoading ? (
                                     <tr>
-                                        <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
+                                        <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                                             <Loader2 size={24} className="animate-spin mx-auto text-indigo-500 mb-2" />
                                             Carregando ativos do Supabase...
                                         </td>
                                     </tr>
                                 ) : filteredAssets.length === 0 ? (
                                     <tr>
-                                        <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
+                                        <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                                             Nenhum ativo encontrado.
                                         </td>
                                     </tr>
@@ -165,6 +339,15 @@ export default function AtivosPage() {
                                         onClick={() => setSelectedAsset(asset)}
                                         className="hover:bg-indigo-50/50 transition-colors group cursor-pointer"
                                     >
+                                        <td className="px-6 py-4 text-center">
+                                            <input
+                                                type="checkbox"
+                                                className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                                                checked={selectedAssetsIds.has(asset.id)}
+                                                onChange={(e) => toggleAssetSelection(asset.id, e)}
+                                                onClick={(e) => e.stopPropagation()}
+                                            />
+                                        </td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
                                                 <div className="p-2 bg-slate-100 rounded-lg text-slate-500">
@@ -179,6 +362,17 @@ export default function AtivosPage() {
                                         <td className="px-6 py-4">
                                             <p className="text-sm font-medium text-slate-700">{asset.ip_address || '-'}</p>
                                             <p className="text-xs text-slate-500 font-mono mt-0.5">{asset.mac_address}</p>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {asset.has_label ? (
+                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                                    <QrCode size={12} /> Impressa
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+                                                    Pendente
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4">
                                             <p className="text-sm text-slate-700">{asset.location}</p>
@@ -256,14 +450,33 @@ export default function AtivosPage() {
 
                         <div className="p-4 border-t border-slate-200 bg-slate-50 rounded-b-xl flex gap-3">
                             <button
-                                onClick={() => {
-                                    alert(`Imprimindo etiqueta QR Code para: ${selectedAsset.name}`);
-                                }}
+                                onClick={handlePrintLabel}
                                 className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded-xl text-sm font-semibold hover:bg-slate-50 transition shadow-sm flex items-center justify-center gap-2"
                             >
                                 <QrCode size={16} /> Print Etiqueta
                             </button>
-                            <button className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-2 rounded-xl text-sm font-semibold hover:from-indigo-700 hover:to-purple-700 transition shadow-md">
+                            <button
+                                onClick={() => {
+                                    setEditingId(selectedAsset.id);
+                                    const standardCategories = ['Computador', 'Switch', 'Nobreak', 'Coletor', 'Impressora'];
+                                    const isCustom = !standardCategories.includes(selectedAsset.category);
+
+                                    setFormData({
+                                        name: selectedAsset.name,
+                                        category: isCustom ? 'Outra (Digitar)' : (selectedAsset.category || 'Computador'),
+                                        brand: selectedAsset.brand || '',
+                                        model: selectedAsset.model || '',
+                                        mac_address: selectedAsset.mac_address || '',
+                                        ip_address: selectedAsset.ip_address || '',
+                                        condition: selectedAsset.condition || 'Novo',
+                                        location: selectedAsset.location || '',
+                                        has_label: selectedAsset.has_label || false
+                                    });
+                                    if (isCustom) setCustomCategory(selectedAsset.category);
+                                    setIsAddModalOpen(true);
+                                }}
+                                className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-2 rounded-xl text-sm font-semibold hover:from-indigo-700 hover:to-purple-700 transition shadow-md"
+                            >
                                 Editar Info
                             </button>
                         </div>
@@ -272,78 +485,93 @@ export default function AtivosPage() {
             </div>
 
             {/* MODAL NOVO ATIVO */}
-            {isAddModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-                        <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-                            <h2 className="text-lg font-bold text-slate-800">Cadastro de Hardware</h2>
-                            <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
-                        </div>
+            {
+                isAddModalOpen && (
+                    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                            <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                                <h2 className="text-lg font-bold text-slate-800">
+                                    {editingId ? 'Editar Hardware' : 'Cadastro de Hardware'}
+                                </h2>
+                                <button onClick={() => { setIsAddModalOpen(false); setEditingId(null); }} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
+                            </div>
 
-                        <div className="p-6 overflow-y-auto space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                <div className="space-y-1.5">
-                                    <label className="text-sm font-medium text-slate-700">Hostname / Nome</label>
-                                    <input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Ex: PC-PROD-05" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-sm font-medium text-slate-700">Categoria</label>
-                                    <select value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })} className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-                                        <option value="Computador">Computador / Notebook</option>
-                                        <option value="Switch">Switch / Roteador</option>
-                                        <option value="Nobreak">Nobreak / UPS</option>
-                                        <option value="Coletor">Coletor de Dados</option>
-                                        <option value="Impressora">Impressora</option>
-                                    </select>
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-sm font-medium text-slate-700">Marca</label>
-                                    <input value={formData.brand} onChange={e => setFormData({ ...formData, brand: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="Ex: Dell" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-sm font-medium text-slate-700">Modelo Exato</label>
-                                    <input value={formData.model} onChange={e => setFormData({ ...formData, model: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="Ex: Optiplex 3080" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-sm font-medium text-slate-700">MAC Address</label>
-                                    <input value={formData.mac_address} onChange={e => setFormData({ ...formData, mac_address: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-sm" placeholder="00:00:00:00:00:00" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-sm font-medium text-slate-700">IP (Fixo se houver)</label>
-                                    <input value={formData.ip_address} onChange={e => setFormData({ ...formData, ip_address: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="192.168.x.x" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-sm font-medium text-slate-700">Estado de Conservação</label>
-                                    <select value={formData.condition} onChange={e => setFormData({ ...formData, condition: e.target.value })} className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                                        <option value="Novo">Novo (Na caixa)</option>
-                                        <option value="Bom">Bom (Uso diário leve)</option>
-                                        <option value="Marcas de Uso">Marcas de Uso / Desgastado</option>
-                                        <option value="Danificado">Danificado (Para sucata/peças)</option>
-                                    </select>
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-sm font-medium text-slate-700">Setor/Localização</label>
-                                    <input value={formData.location} onChange={e => setFormData({ ...formData, location: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="Ex: Recebimento Doca 1" />
+                            <div className="p-6 overflow-y-auto space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-medium text-slate-700">Hostname / Nome</label>
+                                        <input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Ex: PC-PROD-05" />
+                                    </div>
+                                    <div className="space-y-1.5 flex flex-col justify-start">
+                                        <label className="text-sm font-medium text-slate-700">Categoria</label>
+                                        <select value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })} className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                                            <option value="Computador">Computador / Notebook</option>
+                                            <option value="Switch">Switch / Roteador</option>
+                                            <option value="Nobreak">Nobreak / UPS</option>
+                                            <option value="Coletor">Coletor de Dados</option>
+                                            <option value="Impressora">Impressora</option>
+                                            <option value="Outra (Digitar)">Outra (Digitar manualmente...)</option>
+                                        </select>
+                                        {formData.category === 'Outra (Digitar)' && (
+                                            <input
+                                                value={customCategory}
+                                                onChange={e => setCustomCategory(e.target.value)}
+                                                type="text"
+                                                className="w-full mt-2 p-2.5 border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none animate-in fade-in slide-in-from-top-2"
+                                                placeholder="Digite a nova categoria..."
+                                                autoFocus
+                                            />
+                                        )}
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-medium text-slate-700">Marca</label>
+                                        <input value={formData.brand} onChange={e => setFormData({ ...formData, brand: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="Ex: Dell" />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-medium text-slate-700">Modelo Exato</label>
+                                        <input value={formData.model} onChange={e => setFormData({ ...formData, model: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="Ex: Optiplex 3080" />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-medium text-slate-700">MAC Address</label>
+                                        <input value={formData.mac_address} onChange={e => setFormData({ ...formData, mac_address: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-sm" placeholder="00:00:00:00:00:00" />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-medium text-slate-700">IP (Fixo se houver)</label>
+                                        <input value={formData.ip_address} onChange={e => setFormData({ ...formData, ip_address: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="192.168.x.x" />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-medium text-slate-700">Estado de Conservação</label>
+                                        <select value={formData.condition} onChange={e => setFormData({ ...formData, condition: e.target.value })} className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                                            <option value="Novo">Novo (Na caixa)</option>
+                                            <option value="Bom">Bom (Uso diário leve)</option>
+                                            <option value="Marcas de Uso">Marcas de Uso / Desgastado</option>
+                                            <option value="Danificado">Danificado (Para sucata/peças)</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-medium text-slate-700">Setor/Localização</label>
+                                        <input value={formData.location} onChange={e => setFormData({ ...formData, location: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="Ex: Recebimento Doca 1" />
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
-                            <button onClick={() => setIsAddModalOpen(false)} className="px-5 py-2.5 text-slate-600 font-medium hover:bg-slate-200 rounded-lg transition">Cancelar</button>
-                            <button
-                                onClick={handleSaveAsset}
-                                disabled={isSaving}
-                                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 flex items-center gap-2 text-white font-medium rounded-lg transition shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
-                            >
-                                {isSaving && <Loader2 size={16} className="animate-spin" />}
-                                Salvar Ativo
-                            </button>
+                            <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
+                                <button onClick={() => { setIsAddModalOpen(false); setEditingId(null); }} className="px-5 py-2.5 text-slate-600 font-medium hover:bg-slate-200 rounded-lg transition">Cancelar</button>
+                                <button
+                                    onClick={handleSaveAsset}
+                                    disabled={isSaving}
+                                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 flex items-center gap-2 text-white font-medium rounded-lg transition shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                    {isSaving && <Loader2 size={16} className="animate-spin" />}
+                                    Salvar Ativo
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
-        </div>
+        </div >
     );
 }
 
