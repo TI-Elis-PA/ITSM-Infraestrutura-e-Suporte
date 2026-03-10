@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Plus, Search, Filter, Monitor, Server, Wifi, Printer, MoreVertical, X, HardDrive, Cpu, Activity, History, QrCode, Loader2, Download, User, Ticket } from "lucide-react";
+import { Plus, Search, Filter, Monitor, Server, Wifi, Printer, MoreVertical, X, HardDrive, Cpu, Activity, History, QrCode, Loader2, Download, User, Ticket, FileText } from "lucide-react";
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '@/lib/supabase';
 import * as XLSX from 'xlsx';
@@ -130,28 +130,86 @@ export default function AtivosPage() {
         }
     };
 
-    const handleExportExcel = () => {
+    const handleExportReport = () => {
         if (filteredAssets.length === 0) return;
 
-        const exportData = filteredAssets.map(asset => ({
-            'Hostname/Nome': asset.name,
-            'Categoria': asset.category,
-            'Marca': asset.brand,
-            'Modelo': asset.model,
-            'Responsável': asset.responsible_user || 'Não Atribuído',
-            'Localização': asset.location,
-            'S/N': asset.serial_number || '',
-            'IP': asset.ip_address || '',
-            'MAC': asset.mac_address || '',
-            'Conservação': asset.condition,
-            'Status': asset.status,
-            'Etiqueta': asset.has_label ? 'Impressa' : 'Pendente'
-        }));
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) return;
 
-        const worksheet = XLSX.utils.json_to_sheet(exportData);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Ativos');
-        XLSX.writeFile(workbook, `Inventario_Ativos_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
+        const dateStr = new Date().toLocaleDateString('pt-BR');
+
+        const rowsHTML = filteredAssets.map(asset => `
+            <tr>
+                <td><strong>${asset.name}</strong></td>
+                <td>${asset.category}</td>
+                <td>${asset.brand} <br/> <small>${asset.model}</small></td>
+                <td>${asset.responsible_user || '-'}</td>
+                <td>${asset.location || '-'}</td>
+                <td>${asset.ip_address || '-'} <br/> <small>${asset.mac_address || '-'}</small></td>
+                <td><span class="status ${asset.status?.toLowerCase() || 'ativo'}">${asset.status || 'Ativo'}</span></td>
+            </tr>
+        `).join('');
+
+        printWindow.document.write(`
+            <html>
+                <head>
+                    <title>Relatório Detalhado de Ativos</title>
+                    <style>
+                        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; color: #333; margin: 0; }
+                        .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; }
+                        .header h1 { margin: 0; color: #1e293b; font-size: 24px; }
+                        .header p { margin: 5px 0 0; color: #64748b; font-size: 14px; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+                        th, td { border: 1px solid #e2e8f0; padding: 12px; text-align: left; }
+                        th { background-color: #f8fafc; font-weight: 600; color: #475569; text-transform: uppercase; font-size: 11px; }
+                        tr:nth-child(even) { background-color: #f8fafc; }
+                        small { color: #64748b; font-family: monospace; }
+                        .status { padding: 4px 8px; border-radius: 9999px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+                        .status.ativo { background-color: #d1fae5; color: #059669; }
+                        .status.manutenção, .status.manutencao { background-color: #fef3c7; color: #d97706; }
+                        .status.inativo { background-color: #fee2e2; color: #dc2626; }
+                        .footer { margin-top: 40px; font-size: 10px; color: #94a3b8; text-align: center; }
+                        @media print {
+                            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; padding: 0; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>Relatório Detalhado de Inventário</h1>
+                        <p>Gerado em: ${dateStr} &bull; Total de Registros: ${filteredAssets.length}</p>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Hostname / Nome</th>
+                                <th>Categoria</th>
+                                <th>Equipamento</th>
+                                <th>Responsável</th>
+                                <th>Localização</th>
+                                <th>Rede (IP/MAC)</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHTML}
+                        </tbody>
+                    </table>
+                    <div class="footer">
+                        Sistema de Gestão e Controle TI - Elis PA
+                    </div>
+                    <script>
+                        window.onload = () => {
+                            setTimeout(() => {
+                                window.print();
+                                window.close();
+                            }, 500);
+                        };
+                    </script>
+                </body>
+            </html>
+        `);
+        printWindow.document.close();
     };
 
     const handlePrintBulkLabels = async (assetsToPrint: any[]) => {
@@ -279,11 +337,11 @@ export default function AtivosPage() {
                 </div>
                 <div className="flex gap-3 w-full md:w-auto">
                     <button
-                        onClick={handleExportExcel}
+                        onClick={handleExportReport}
                         className="bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 px-5 py-2.5 rounded-xl font-medium transition-all shadow-sm flex items-center gap-2"
                     >
-                        <Download size={18} />
-                        Exportar Excel
+                        <FileText size={18} />
+                        Exportar Relatório
                     </button>
                     <button
                         onClick={() => {
