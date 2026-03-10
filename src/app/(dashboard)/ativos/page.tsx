@@ -96,6 +96,22 @@ export default function AtivosPage() {
         setIsSaving(false);
     };
 
+    const handleDeleteAsset = async (id: string) => {
+        if (!confirm('Tem certeza que deseja excluir este ativo permanentemente?')) return;
+
+        setIsSaving(true);
+        const { error } = await supabase.from('ativos').delete().eq('id', id);
+        setIsSaving(false);
+
+        if (error) {
+            console.error('Erro ao excluir:', error);
+            alert('Falha ao excluir o ativo.');
+        } else {
+            setSelectedAsset(null);
+            fetchAssets();
+        }
+    };
+
     const handlePrintBulkLabels = async (assetsToPrint: any[]) => {
         if (!assetsToPrint || assetsToPrint.length === 0) return;
         const printWindow = window.open('', '_blank', 'width=800,height=800');
@@ -455,30 +471,40 @@ export default function AtivosPage() {
                             >
                                 <QrCode size={16} /> Print Etiqueta
                             </button>
-                            <button
-                                onClick={() => {
-                                    setEditingId(selectedAsset.id);
-                                    const standardCategories = ['Computador', 'Switch', 'Nobreak', 'Coletor', 'Impressora'];
-                                    const isCustom = !standardCategories.includes(selectedAsset.category);
+                            <div className="flex-1 flex gap-2">
+                                <button
+                                    onClick={() => {
+                                        setEditingId(selectedAsset.id);
+                                        const standardCategories = ['Computador', 'Switch', 'Nobreak', 'Coletor', 'Impressora'];
+                                        const isCustom = !standardCategories.includes(selectedAsset.category);
 
-                                    setFormData({
-                                        name: selectedAsset.name,
-                                        category: isCustom ? 'Outra (Digitar)' : (selectedAsset.category || 'Computador'),
-                                        brand: selectedAsset.brand || '',
-                                        model: selectedAsset.model || '',
-                                        mac_address: selectedAsset.mac_address || '',
-                                        ip_address: selectedAsset.ip_address || '',
-                                        condition: selectedAsset.condition || 'Novo',
-                                        location: selectedAsset.location || '',
-                                        has_label: selectedAsset.has_label || false
-                                    });
-                                    if (isCustom) setCustomCategory(selectedAsset.category);
-                                    setIsAddModalOpen(true);
-                                }}
-                                className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-2 rounded-xl text-sm font-semibold hover:from-indigo-700 hover:to-purple-700 transition shadow-md"
-                            >
-                                Editar Info
-                            </button>
+                                        setFormData({
+                                            name: selectedAsset.name,
+                                            category: isCustom ? 'Outra (Digitar)' : (selectedAsset.category || 'Computador'),
+                                            brand: selectedAsset.brand || '',
+                                            model: selectedAsset.model || '',
+                                            mac_address: selectedAsset.mac_address || '',
+                                            ip_address: selectedAsset.ip_address || '',
+                                            condition: selectedAsset.condition || 'Novo',
+                                            location: selectedAsset.location || '',
+                                            has_label: selectedAsset.has_label || false
+                                        });
+                                        if (isCustom) setCustomCategory(selectedAsset.category);
+                                        setIsAddModalOpen(true);
+                                    }}
+                                    className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-2 rounded-xl text-sm font-semibold hover:from-indigo-700 hover:to-purple-700 transition shadow-md"
+                                >
+                                    Editar Info
+                                </button>
+                                <button
+                                    onClick={() => handleDeleteAsset(selectedAsset.id)}
+                                    disabled={isSaving}
+                                    className="px-3 bg-white border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-50 transition shadow-sm flex items-center justify-center"
+                                    title="Excluir Ativo"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
