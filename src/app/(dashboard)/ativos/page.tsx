@@ -1,11 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Plus, Search, Filter, Monitor, Server, Wifi, Printer, MoreVertical, X, HardDrive, Cpu, Activity, History, QrCode, Loader2 } from "lucide-react";
+import { Plus, Search, Filter, Monitor, Server, Wifi, Printer, MoreVertical, X, HardDrive, Cpu, Activity, History, QrCode, Loader2, Download, User, Ticket } from "lucide-react";
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '@/lib/supabase';
+import * as XLSX from 'xlsx';
+import { useRouter } from 'next/navigation';
 
 export default function AtivosPage() {
+    const router = useRouter();
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedCategory, setSelectedCategory] = useState("");
     const [selectedAsset, setSelectedAsset] = useState<any>(null);
@@ -22,7 +25,7 @@ export default function AtivosPage() {
     // Form States
     const [formData, setFormData] = useState({
         name: '', category: 'Computador', brand: '', model: '',
-        mac_address: '', ip_address: '', condition: 'Novo', location: '', has_label: false
+        mac_address: '', ip_address: '', condition: 'Novo', location: '', responsible_user: '', has_label: false, quantity: 1
     });
     const [customCategory, setCustomCategory] = useState("");
 
@@ -53,7 +56,7 @@ export default function AtivosPage() {
         if (!formData.name || !finalCategory) return;
         setIsSaving(true);
 
-        const payload: any = {
+        const basePayload: any = {
             name: formData.name,
             category: finalCategory,
             brand: formData.brand,
@@ -62,6 +65,7 @@ export default function AtivosPage() {
             ip_address: formData.ip_address,
             condition: formData.condition,
             location: formData.location,
+            responsible_user: formData.responsible_user,
             has_label: formData.has_label
         };
 
@@ -70,13 +74,27 @@ export default function AtivosPage() {
         if (editingId) {
             const { error } = await supabase
                 .from('ativos')
-                .update(payload)
+                .update(basePayload)
                 .eq('id', editingId);
             queryError = error;
         } else {
+            const qty = Math.max(1, Math.min(100, Math.floor(formData.quantity) || 1));
+            const payloadsToInsert = [];
+
+            for (let i = 0; i < qty; i++) {
+                let currentName = formData.name;
+                // If bulk creating and name doesn't already have numbers trailing, add suffix
+                // Or simply append -X if qty > 1
+                if (qty > 1) {
+                    currentName = `${formData.name}-${String(i + 1).padStart(2, '0')}`;
+                }
+
+                payloadsToInsert.push({ ...basePayload, name: currentName, status: 'Ativo' });
+            }
+
             const { error } = await supabase
                 .from('ativos')
-                .insert([{ ...payload, status: 'Ativo' }]);
+                .insert(payloadsToInsert);
             queryError = error;
         }
 
@@ -84,12 +102,12 @@ export default function AtivosPage() {
             console.error('Erro ao salvar:', queryError);
             alert('Falha ao salvar ativo.');
         } else {
-            setFormData({ name: '', category: 'Computador', brand: '', model: '', mac_address: '', ip_address: '', condition: 'Novo', location: '', has_label: false });
+            setFormData({ name: '', category: 'Computador', brand: '', model: '', mac_address: '', ip_address: '', condition: 'Novo', location: '', responsible_user: '', has_label: false, quantity: 1 });
             setCustomCategory('');
             setEditingId(null);
             setIsAddModalOpen(false);
             if (editingId && selectedAsset) {
-                setSelectedAsset({ ...selectedAsset, ...payload });
+                setSelectedAsset({ ...selectedAsset, ...basePayload });
             }
             fetchAssets(); // Refresh list
         }
@@ -110,6 +128,30 @@ export default function AtivosPage() {
             setSelectedAsset(null);
             fetchAssets();
         }
+    };
+
+    const handleExportExcel = () => {
+        if (filteredAssets.length === 0) return;
+
+        const exportData = filteredAssets.map(asset => ({
+            'Hostname/Nome': asset.name,
+            'Categoria': asset.category,
+            'Marca': asset.brand,
+            'Modelo': asset.model,
+            'Responsável': asset.responsible_user || 'Não Atribuído',
+            'Localização': asset.location,
+            'S/N': asset.serial_number || '',
+            'IP': asset.ip_address || '',
+            'MAC': asset.mac_address || '',
+            'Conservação': asset.condition,
+            'Status': asset.status,
+            'Etiqueta': asset.has_label ? 'Impressa' : 'Pendente'
+        }));
+
+        const worksheet = XLSX.utils.json_to_sheet(exportData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Ativos');
+        XLSX.writeFile(workbook, `Inventario_Ativos_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
     };
 
     const handlePrintBulkLabels = async (assetsToPrint: any[]) => {
@@ -235,17 +277,26 @@ export default function AtivosPage() {
                     </h1>
                     <p className="text-slate-500 mt-1 font-medium">Gestão de Hardware, Modelos e Conservação</p>
                 </div>
-                <button
-                    onClick={() => {
-                        setEditingId(null);
-                        setFormData({ name: '', category: 'Computador', brand: '', model: '', mac_address: '', ip_address: '', condition: 'Novo', location: '', has_label: false });
-                        setIsAddModalOpen(true);
-                    }}
-                    className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-5 py-2.5 rounded-xl font-medium transition-all shadow-[0_4px_14px_0_rgba(99,102,241,0.39)] hover:shadow-[0_6px_20px_rgba(99,102,241,0.5)] flex items-center gap-2 transform hover:-translate-y-0.5"
-                >
-                    <Plus size={18} />
-                    Cadastrar Ativo
-                </button>
+                <div className="flex gap-3 w-full md:w-auto">
+                    <button
+                        onClick={handleExportExcel}
+                        className="bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 px-5 py-2.5 rounded-xl font-medium transition-all shadow-sm flex items-center gap-2"
+                    >
+                        <Download size={18} />
+                        Exportar Excel
+                    </button>
+                    <button
+                        onClick={() => {
+                            setEditingId(null);
+                            setFormData({ name: '', category: 'Computador', brand: '', model: '', mac_address: '', ip_address: '', condition: 'Novo', location: '', responsible_user: '', has_label: false, quantity: 1 });
+                            setIsAddModalOpen(true);
+                        }}
+                        className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-5 py-2.5 rounded-xl font-medium transition-all shadow-[0_4px_14px_0_rgba(99,102,241,0.39)] hover:shadow-[0_6px_20px_rgba(99,102,241,0.5)] flex items-center gap-2 transform hover:-translate-y-0.5 whitespace-nowrap"
+                    >
+                        <Plus size={18} />
+                        Cadastrar Ativo
+                    </button>
+                </div>
             </div>
 
             {/* BULK ACTIONS */}
@@ -438,7 +489,7 @@ export default function AtivosPage() {
                                     <DetailItem label="Categoria" value={selectedAsset.category} />
                                     <DetailItem label="Marca" value={selectedAsset.brand} />
                                     <DetailItem label="Modelo" value={selectedAsset.model} />
-                                    <DetailItem label="S/N" value={selectedAsset.serial_number} />
+                                    <DetailItem label="Responsável Atual" value={selectedAsset.responsible_user || 'Não Atribuído'} />
                                     <DetailItem label="IP" value={selectedAsset.ip_address} />
                                     <DetailItem label="MAC" value={selectedAsset.mac_address} />
                                 </div>
@@ -464,14 +515,22 @@ export default function AtivosPage() {
 
                         </div>
 
-                        <div className="p-4 border-t border-slate-200 bg-slate-50 rounded-b-xl flex gap-3">
-                            <button
-                                onClick={handlePrintLabel}
-                                className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded-xl text-sm font-semibold hover:bg-slate-50 transition shadow-sm flex items-center justify-center gap-2"
-                            >
-                                <QrCode size={16} /> Print Etiqueta
-                            </button>
-                            <div className="flex-1 flex gap-2">
+                        <div className="p-4 border-t border-slate-200 bg-slate-50 rounded-b-xl flex flex-col gap-3">
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={handlePrintLabel}
+                                    className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded-xl text-sm font-semibold hover:bg-slate-50 transition shadow-sm flex items-center justify-center gap-2"
+                                >
+                                    <QrCode size={16} /> Print Etiqueta
+                                </button>
+                                <button
+                                    onClick={() => router.push(`/chamados?asset_id=${selectedAsset.id}&asset_name=${encodeURIComponent(selectedAsset.name)}`)}
+                                    className="flex-1 bg-rose-50 border border-rose-200 text-rose-700 py-2 rounded-xl text-sm font-semibold hover:bg-rose-100 hover:border-rose-300 transition shadow-sm flex items-center justify-center gap-2"
+                                >
+                                    <Ticket size={16} /> Abrir Chamado
+                                </button>
+                            </div>
+                            <div className="flex gap-2">
                                 <button
                                     onClick={() => {
                                         setEditingId(selectedAsset.id);
@@ -487,7 +546,9 @@ export default function AtivosPage() {
                                             ip_address: selectedAsset.ip_address || '',
                                             condition: selectedAsset.condition || 'Novo',
                                             location: selectedAsset.location || '',
-                                            has_label: selectedAsset.has_label || false
+                                            responsible_user: selectedAsset.responsible_user || '',
+                                            has_label: selectedAsset.has_label || false,
+                                            quantity: 1
                                         });
                                         if (isCustom) setCustomCategory(selectedAsset.category);
                                         setIsAddModalOpen(true);
@@ -525,9 +586,34 @@ export default function AtivosPage() {
                             <div className="p-6 overflow-y-auto space-y-6">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                     <div className="space-y-1.5">
-                                        <label className="text-sm font-medium text-slate-700">Hostname / Nome</label>
-                                        <input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Ex: PC-PROD-05" />
+                                        <label className="text-sm font-medium text-slate-700">Hostname / Nome Base</label>
+                                        <input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Ex: PC-PROD" />
                                     </div>
+
+                                    {!editingId ? (
+                                        <div className="space-y-1.5">
+                                            <label className="text-sm font-bold text-indigo-700 flex items-center justify-between">
+                                                Quantidade a Cadastrar
+                                                <span className="text-xs bg-indigo-100 px-2 py-0.5 rounded text-indigo-600 font-medium">Lote Automático</span>
+                                            </label>
+                                            <input
+                                                value={formData.quantity}
+                                                onChange={e => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
+                                                type="number"
+                                                min="1"
+                                                max="100"
+                                                className="w-full p-2.5 border border-indigo-200 bg-indigo-50/50 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-semibold text-indigo-900"
+                                            />
+                                            {formData.quantity > 1 && (
+                                                <p className="text-xs text-indigo-500 font-medium mt-1">
+                                                    Serão criados: {formData.name}-01 até {formData.name}-{String(formData.quantity).padStart(2, '0')}
+                                                </p>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-1.5"></div>
+                                    )}
+
                                     <div className="space-y-1.5 flex flex-col justify-start">
                                         <label className="text-sm font-medium text-slate-700">Categoria</label>
                                         <select value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })} className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
@@ -573,6 +659,10 @@ export default function AtivosPage() {
                                             <option value="Marcas de Uso">Marcas de Uso / Desgastado</option>
                                             <option value="Danificado">Danificado (Para sucata/peças)</option>
                                         </select>
+                                    </div>
+                                    <div className="space-y-1.5 flex flex-col justify-end">
+                                        <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5"><User size={14} className="text-slate-400" />Usuário / Responsável Atual</label>
+                                        <input value={formData.responsible_user} onChange={e => setFormData({ ...formData, responsible_user: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="Ex: João (Contabilidade)" />
                                     </div>
                                     <div className="space-y-1.5">
                                         <label className="text-sm font-medium text-slate-700">Setor/Localização</label>
