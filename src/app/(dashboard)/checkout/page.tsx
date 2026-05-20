@@ -45,8 +45,12 @@ function CheckoutContent() {
 
     // Form State
     const [formData, setFormData] = useState({
-        asset_name: '', borrower_name: '', department: 'Administrativo', notes: '', asset_id: ''
+        asset_name: '', borrower_name: '', department: 'Administrativo', notes: '', asset_id: '', expected_return_date: ''
     });
+    
+    // Search & UI States
+    const [searchTerm, setSearchTerm] = useState("");
+    const [confirmReturnData, setConfirmReturnData] = useState<{ id: string, asset_id: string } | null>(null);
 
     // Assets to select from
     const [availableAssets, setAvailableAssets] = useState<any[]>([]);
@@ -262,26 +266,35 @@ function CheckoutContent() {
 
     // ── CRUD ────────────────────────────────────────────────────────
     const handleCreateCheckout = async () => {
-        if (!formData.asset_name || !formData.borrower_name) return;
+        if (!formData.asset_id || !formData.borrower_name) return;
         setIsSaving(true);
         const { error } = await supabase.from('checkout_loans').insert([{
+            asset_id: formData.asset_id,
             asset_name: formData.asset_name,
             borrower_name: formData.borrower_name,
             department: formData.department,
             notes: formData.notes,
+            expected_return_date: formData.expected_return_date || null,
             status: 'Ativo'
         }]);
 
         if (!error) {
-            setFormData({ asset_name: '', borrower_name: '', department: 'Administrativo', notes: '', asset_id: '' });
+            // Sincronizar o ativo mudando status para Emprestado
+            await supabase.from('ativos').update({
+                status: 'Emprestado',
+                location: formData.department,
+                responsible_user: formData.borrower_name
+            }).eq('id', formData.asset_id);
+
+            setFormData({ asset_name: '', borrower_name: '', department: 'Administrativo', notes: '', asset_id: '', expected_return_date: '' });
             setIsNewOpen(false);
             fetchCheckouts();
+            fetchAvailableAssets(); // Refresh para retirar ele do select
         }
         setIsSaving(false);
     };
 
-    const handleReturn = async (id: string) => {
-        if (!confirm('Confirmar devolução deste equipamento?')) return;
+    const handleReturn = async (id: string, asset_id: string) => {
         setIsSaving(true);
         const { error } = await supabase
             .from('checkout_loans')
@@ -289,10 +302,30 @@ function CheckoutContent() {
             .eq('id', id);
 
         if (!error) {
+            if (asset_id) {
+                // Sincronizar o ativo voltando pro estoque
+                await supabase.from('ativos').update({
+                    status: 'Ativo',
+                    location: 'Estoque de TI',
+                    responsible_user: ''
+                }).eq('id', asset_id);
+            }
             fetchCheckouts();
+            fetchAvailableAssets();
+            setConfirmReturnData(null);
         }
         setIsSaving(false);
     };
+
+    const filteredCheckouts = checkouts.filter(c => {
+        const matchTab = activeTab === 'ativos' ? c.status === 'Ativo' : c.status === 'Devolvido';
+        const searchLower = searchTerm.toLowerCase();
+        const matchSearch = searchTerm === "" || 
+            (c.asset_name?.toLowerCase().includes(searchLower)) ||
+            (c.borrower_name?.toLowerCase().includes(searchLower)) ||
+            (c.department?.toLowerCase().includes(searchLower));
+        return matchTab && matchSearch;
+    });
 
     // ── Preview: substitui placeholders com dados de exemplo ───────
     const previewText = termBody
@@ -342,6 +375,20 @@ function CheckoutContent() {
                         </button>
                     </div>
 
+                    {/* Barra de Pesquisa */}
+                    <div className="p-4 border-b border-slate-100 bg-white flex justify-between items-center">
+                        <div className="relative w-full max-w-md">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                            <input
+                                type="text"
+                                placeholder="Buscar por equipamento, pessoa ou setor..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all text-sm"
+                            />
+                        </div>
+                    </div>
+
                     <div className="p-0 overflow-y-auto max-h-[600px]">
                         <div className="divide-y divide-slate-100">
                             {isLoading ? (
@@ -349,22 +396,33 @@ function CheckoutContent() {
                                     <Loader2 size={32} className="animate-spin text-emerald-500 mb-4" />
                                     Carregando empréstimos...
                                 </div>
-                            ) : checkouts.filter(c => activeTab === 'ativos' ? c.status === 'Ativo' : c.status === 'Devolvido').length === 0 ? (
+                            ) : filteredCheckouts.length === 0 ? (
                                 <div className="p-12 text-center text-slate-500 w-full">
                                     Nenhum registro encontrado nesta aba.
                                 </div>
-                            ) : checkouts.filter(c => activeTab === 'ativos' ? c.status === 'Ativo' : c.status === 'Devolvido').map((checkout) => (
-                                <div key={checkout.id} className="p-5 hover:bg-slate-50/50 transition-colors flex flex-col md:flex-row gap-4 items-start md:items-center md:justify-between">
+                            ) : filteredCheckouts.map((checkout) => {
+                                const isLate = checkout.expected_return_date && new Date(checkout.expected_return_date) < new Date();
+                                
+                                return (
+                                <div key={checkout.id} className={`p-5 transition-colors flex flex-col md:flex-row gap-4 items-start md:items-center md:justify-between ${isLate && checkout.status === 'Ativo' ? 'bg-rose-50/50 hover:bg-rose-50' : 'hover:bg-slate-50/50'}`}>
                                     <div className="flex items-start gap-4">
-                                        <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg flex-shrink-0">
+                                        <div className={`p-3 rounded-lg flex-shrink-0 ${isLate && checkout.status === 'Ativo' ? 'bg-rose-100 text-rose-600' : 'bg-indigo-50 text-indigo-600'}`}>
                                             <UserCheck size={20} />
                                         </div>
                                         <div>
-                                            <h3 className="font-bold text-slate-800">{checkout.asset_name}</h3>
+                                            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                                {checkout.asset_name}
+                                                {isLate && checkout.status === 'Ativo' && <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-600 uppercase tracking-widest border border-rose-200 animate-pulse">Atrasado</span>}
+                                            </h3>
                                             <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500 mt-1">
                                                 <span><strong className="font-medium text-slate-700">Para:</strong> {checkout.borrower_name} ({checkout.department})</span>
                                                 <span className="flex items-center gap-1.5"><Clock size={14} /> Saída: {checkout.formattedLoanDate}</span>
                                             </div>
+                                            {checkout.expected_return_date && checkout.status === 'Ativo' && (
+                                                <p className={`text-xs mt-1 font-medium ${isLate ? 'text-rose-600' : 'text-slate-500'}`}>
+                                                    Previsto para: {new Date(checkout.expected_return_date).toLocaleDateString('pt-BR')}
+                                                </p>
+                                            )}
                                             <p className="text-xs text-slate-400 mt-2">Motivo: {checkout.notes}</p>
                                         </div>
                                     </div>
@@ -381,7 +439,7 @@ function CheckoutContent() {
                                                     Termo
                                                 </button>
                                                 <button
-                                                    onClick={() => handleReturn(checkout.id)}
+                                                    onClick={() => setConfirmReturnData({ id: checkout.id, asset_id: checkout.asset_id })}
                                                     disabled={isSaving}
                                                     className="flex-1 md:flex-none px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 transition-colors disabled:opacity-50"
                                                 >
@@ -395,7 +453,7 @@ function CheckoutContent() {
                                         )}
                                     </div>
                                 </div>
-                            ))}
+                            )})}
                         </div>
                     </div>
                 </div>
@@ -649,6 +707,10 @@ function CheckoutContent() {
                                         <option value="Recebimento">Recebimento</option>
                                     </select>
                                 </div>
+                                <div className="col-span-2">
+                                    <label className="text-sm font-medium text-slate-700 mb-1.5 block">Data Prevista de Devolução (Opcional)</label>
+                                    <input value={formData.expected_return_date} onChange={e => setFormData({ ...formData, expected_return_date: e.target.value })} type="date" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 text-slate-700" />
+                                </div>
                             </div>
 
                             <div>
@@ -666,6 +728,36 @@ function CheckoutContent() {
                             >
                                 {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
                                 Efetivar Empréstimo
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ══════════════════════════════════════════════════════════
+                MODAL: CONFIRMAR DEVOLUÇÃO
+               ══════════════════════════════════════════════════════════ */}
+            {confirmReturnData && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col p-6 text-center animate-in zoom-in-95">
+                        <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <CheckCircle2 size={32} />
+                        </div>
+                        <h2 className="text-xl font-bold text-slate-800 mb-2">Confirmar Devolução</h2>
+                        <p className="text-slate-500 text-sm mb-6">
+                            Você está prestes a devolver este equipamento. Ele voltará automaticamente para o status <strong>Ativo</strong> no Inventário.
+                        </p>
+                        
+                        <div className="flex gap-3 w-full">
+                            <button onClick={() => setConfirmReturnData(null)} className="flex-1 px-4 py-2.5 text-slate-600 font-medium hover:bg-slate-100 rounded-xl transition">
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={() => handleReturn(confirmReturnData.id, confirmReturnData.asset_id)}
+                                disabled={isSaving}
+                                className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-xl transition flex justify-center items-center gap-2"
+                            >
+                                {isSaving ? <Loader2 size={18} className="animate-spin" /> : 'Confirmar'}
                             </button>
                         </div>
                     </div>

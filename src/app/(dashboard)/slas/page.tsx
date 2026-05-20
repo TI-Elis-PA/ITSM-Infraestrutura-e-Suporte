@@ -4,7 +4,12 @@ import React, { useState } from 'react';
 import { Calendar, AlertCircle, CheckCircle, Clock, Server, Monitor, ShieldCheck, BatteryWarning } from 'lucide-react';
 
 export default function SLA_Calendar_Page() {
-    const [events, setEvents] = useState<any[]>([]);
+    const [events, setEvents] = useState<any[]>([
+        { id: 1, title: 'Renovação Link Fibra Principal (Claro)', type: 'Contrato', date: '25/Nov/2026', status: 'urgent', icon: <Server size={18} /> },
+        { id: 2, title: 'Garantia Servidor Dell R740', type: 'Garantia', date: '05/Dez/2026', status: 'warning', icon: <ShieldCheck size={18} /> },
+        { id: 3, title: 'Substituição Baterias Nobreak Central', type: 'Manutenção', date: '12/Dez/2026', status: 'warning', icon: <BatteryWarning size={18} /> },
+        { id: 4, title: 'Licenciamento Microsoft 365', type: 'Software', date: '15/Jan/2027', status: 'normal', icon: <Monitor size={18} /> },
+    ]);
 
     return (
         <div className="p-8 space-y-8 max-w-7xl mx-auto">

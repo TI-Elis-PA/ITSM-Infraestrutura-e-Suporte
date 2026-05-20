@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { Book, Shield, Network, Building, Phone, Mail, FileText, Search, Server, Cpu, Wifi } from "lucide-react";
+import { Book, Shield, Network, Building, Phone, Mail, FileText, Search, Server, Cpu, Wifi, ScanLine } from "lucide-react";
+import RFIDDashboard from "@/components/rfid/RFIDDashboard";
 
 export default function WikiPage() {
-    const [activeTab, setActiveTab] = useState<'docs' | 'mapa' | 'contatos'>('docs');
+    const [activeTab, setActiveTab] = useState<'docs' | 'mapa' | 'contatos' | 'rfid'>('docs');
 
     return (
         <div className="p-8">
@@ -21,6 +22,7 @@ export default function WikiPage() {
                 <TabButton icon={<Book size={18} />} label="Documentação Téc." active={activeTab === 'docs'} onClick={() => setActiveTab('docs')} />
                 <TabButton icon={<Network size={18} />} label="Mapa da Infraestrutura" active={activeTab === 'mapa'} onClick={() => setActiveTab('mapa')} />
                 <TabButton icon={<Phone size={18} />} label="Contatos & Fornecedores" active={activeTab === 'contatos'} onClick={() => setActiveTab('contatos')} />
+                <TabButton icon={<ScanLine size={18} />} label="Módulo RFID" active={activeTab === 'rfid'} onClick={() => setActiveTab('rfid')} />
             </div>
 
             {/* TABS CONTENT */}
@@ -141,6 +143,10 @@ export default function WikiPage() {
                         <ContactRow name="Global Print (Zebra/Elgin)" type="Locação Impressoras Térmicas" phone="(11) 3333-4444" email="suporte@globalprint.com" extra="Contrato #9928" />
                     </div>
                 </div>
+            )}
+
+            {activeTab === 'rfid' && (
+                <RFIDDashboard />
             )}
 
         </div>

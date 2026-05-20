@@ -16,6 +16,9 @@ export default function AtivosPage() {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [selectedAssetsIds, setSelectedAssetsIds] = useState<Set<string>>(new Set());
     const [filterHasLabel, setFilterHasLabel] = useState<string>("all");
+    const [selectedStatus, setSelectedStatus] = useState("");
+    const [loanHistory, setLoanHistory] = useState<any[]>([]);
+    const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
     // Supabase States
     const [assets, setAssets] = useState<any[]>([]);
@@ -25,9 +28,40 @@ export default function AtivosPage() {
     // Form States
     const [formData, setFormData] = useState({
         name: '', category: 'Computador', brand: '', model: '',
-        mac_address: '', ip_address: '', condition: 'Novo', location: '', responsible_user: '', has_label: false, quantity: 1
+        mac_address: '', ip_address: '', condition: 'Novo', location: '', responsible_user: '', has_label: false, quantity: 1,
+        status: 'Ativo', purchase_date: '', warranty_date: ''
     });
     const [customCategory, setCustomCategory] = useState("");
+
+    const handleMacChange = (val: string) => {
+        let clean = val.toUpperCase().replace(/[^\dA-F]/g, '');
+        if (clean.length > 12) clean = clean.substring(0, 12);
+        const parts = clean.match(/.{1,2}/g) || [];
+        setFormData({ ...formData, mac_address: parts.join(':') });
+    };
+
+    const handleIpChange = (val: string) => {
+        let clean = val.replace(/[^\d.]/g, '');
+        setFormData({ ...formData, ip_address: clean });
+    };
+
+    useEffect(() => {
+        if (selectedAsset) {
+            const fetchHistory = async () => {
+                setIsHistoryLoading(true);
+                const { data } = await supabase
+                    .from('checkout_loans')
+                    .select('*')
+                    .eq('asset_name', selectedAsset.name)
+                    .order('created_at', { ascending: false });
+                setLoanHistory(data || []);
+                setIsHistoryLoading(false);
+            };
+            fetchHistory();
+        } else {
+            setLoanHistory([]);
+        }
+    }, [selectedAsset]);
     
     // Categorias dinâmicas para o filtro
     const dynamicCategories = Array.from(new Set(assets.map(a => a.category))).filter(Boolean).sort();
@@ -69,7 +103,10 @@ export default function AtivosPage() {
             condition: formData.condition,
             location: formData.location,
             responsible_user: formData.responsible_user,
-            has_label: formData.has_label
+            has_label: formData.has_label,
+            status: formData.status,
+            purchase_date: formData.purchase_date || null,
+            warranty_date: formData.warranty_date || null
         };
 
         let queryError = null;
@@ -105,7 +142,7 @@ export default function AtivosPage() {
             console.error('Erro ao salvar:', queryError);
             alert('Falha ao salvar ativo.');
         } else {
-            setFormData({ name: '', category: 'Computador', brand: '', model: '', mac_address: '', ip_address: '', condition: 'Novo', location: '', responsible_user: '', has_label: false, quantity: 1 });
+            setFormData({ name: '', category: 'Computador', brand: '', model: '', mac_address: '', ip_address: '', condition: 'Novo', location: '', responsible_user: '', has_label: false, quantity: 1, status: 'Ativo', purchase_date: '', warranty_date: '' });
             setCustomCategory('');
             setEditingId(null);
             setIsAddModalOpen(false);
@@ -258,7 +295,7 @@ export default function AtivosPage() {
         const qrSVGs: Record<string, string> = {};
         
         for (const asset of assetsToPrint) {
-            const qrValue = `itsm://asset/${asset.id}`;
+            const qrValue = `${window.location.origin}/ativos?id=${asset.id}`;
             // Create a temporary container, render QRCodeSVG, extract the SVG markup
             const tempDiv = document.createElement('div');
             tempDiv.style.position = 'absolute';
@@ -368,12 +405,13 @@ export default function AtivosPage() {
             (asset.mac_address && asset.mac_address.toLowerCase().includes(searchTerm.toLowerCase()));
 
         const matchesCategory = selectedCategory === "" || asset.category === selectedCategory;
+        const matchesStatus = selectedStatus === "" || asset.status === selectedStatus;
 
         let matchesLabelState = true;
         if (filterHasLabel === "yes") matchesLabelState = asset.has_label === true;
         if (filterHasLabel === "no") matchesLabelState = asset.has_label !== true; // Handles false or null
 
-        return matchesSearch && matchesCategory && matchesLabelState;
+        return matchesSearch && matchesCategory && matchesLabelState && matchesStatus;
     });
 
     const toggleAssetSelection = (id: string, e: any) => {
@@ -487,6 +525,16 @@ export default function AtivosPage() {
                             <option key={cat} value={cat}>{cat}</option>
                         ))}
                     </select>
+                    <select
+                        value={selectedStatus}
+                        onChange={(e) => setSelectedStatus(e.target.value)}
+                        className="px-4 py-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-medium cursor-pointer"
+                    >
+                        <option value="">Todos os Status</option>
+                        <option value="Ativo">Ativo</option>
+                        <option value="Manutenção">Em Manutenção</option>
+                        <option value="Inativo">Inativo / Descartado</option>
+                    </select>
                 </div>
             </div>
 
@@ -599,7 +647,7 @@ export default function AtivosPage() {
 
                             <div className="text-center pb-4 border-b border-slate-100 relative">
                                 <div className="absolute right-0 top-0 opacity-20 pointer-events-none grayscale">
-                                    <QRCodeSVG value={`itsm://asset/${selectedAsset.id}`} size={64} />
+                                    <QRCodeSVG value={`${window.location.origin}/ativos?id=${selectedAsset.id}`} size={64} />
                                 </div>
                                 <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-3 text-slate-600 shadow-inner">
                                     {getCategoryIcon(selectedAsset.category)}
@@ -634,9 +682,36 @@ export default function AtivosPage() {
                                         <span className="font-medium text-slate-800">{selectedAsset.condition}</span>
                                     </div>
                                     <div className="flex justify-between items-center text-sm">
-                                        <span className="text-slate-500">Última Review</span>
-                                        <span className="font-medium text-slate-800">{selectedAsset.last_maintenance || 'Sem registro'}</span>
+                                        <span className="text-slate-500">Data de Aquisição</span>
+                                        <span className="font-medium text-slate-800">{selectedAsset.purchase_date ? new Date(selectedAsset.purchase_date).toLocaleDateString('pt-BR') : 'Não informada'}</span>
                                     </div>
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-slate-500">Fim da Garantia</span>
+                                        <span className={`font-medium ${selectedAsset.warranty_date && new Date(selectedAsset.warranty_date) < new Date() ? 'text-rose-600' : 'text-slate-800'}`}>
+                                            {selectedAsset.warranty_date ? new Date(selectedAsset.warranty_date).toLocaleDateString('pt-BR') : 'Sem garantia'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4 pt-4 border-t border-slate-100">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Histórico de Empréstimos</h4>
+                                <div className="space-y-2">
+                                    {isHistoryLoading ? (
+                                        <div className="text-center py-4"><Loader2 size={16} className="animate-spin text-indigo-500 mx-auto" /></div>
+                                    ) : loanHistory.length === 0 ? (
+                                        <div className="text-xs text-slate-500 text-center py-2">Nenhum histórico registrado.</div>
+                                    ) : loanHistory.slice(0, 3).map((loan) => (
+                                        <div key={loan.id} className="p-3 bg-slate-50 border border-slate-100 rounded-lg text-sm flex flex-col gap-1">
+                                            <div className="flex justify-between">
+                                                <span className="font-medium text-slate-700">{loan.borrower_name}</span>
+                                                <span className="text-xs text-slate-500">{new Date(loan.loan_date).toLocaleDateString('pt-BR')}</span>
+                                            </div>
+                                            <div className="text-xs text-slate-500">
+                                                Status: <span className={loan.status === 'Devolvido' ? 'text-emerald-600' : 'text-amber-600'}>{loan.status}</span>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
 
@@ -675,7 +750,10 @@ export default function AtivosPage() {
                                             location: selectedAsset.location || '',
                                             responsible_user: selectedAsset.responsible_user || '',
                                             has_label: selectedAsset.has_label || false,
-                                            quantity: 1
+                                            quantity: 1,
+                                            status: selectedAsset.status || 'Ativo',
+                                            purchase_date: selectedAsset.purchase_date || '',
+                                            warranty_date: selectedAsset.warranty_date || ''
                                         });
                                         if (isCustom) setCustomCategory(selectedAsset.category);
                                         setIsAddModalOpen(true);
@@ -780,19 +858,50 @@ export default function AtivosPage() {
                                         <label className="text-sm font-medium text-slate-700">MAC Address</label>
                                         <input value={formData.mac_address} onChange={e => setFormData({ ...formData, mac_address: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-sm" placeholder="00:00:00:00:00:00" />
                                     </div>
-                                    <div className="space-y-1.5">
-                                        <label className="text-sm font-medium text-slate-700">IP (Fixo se houver)</label>
-                                        <input value={formData.ip_address} onChange={e => setFormData({ ...formData, ip_address: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="192.168.x.x" />
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                        <div className="space-y-1.5">
+                                            <label className="text-sm font-medium text-slate-700">Endereço IP</label>
+                                            <input value={formData.ip_address} onChange={e => handleIpChange(e.target.value)} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono text-sm" placeholder="Ex: 192.168.1.100" />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-sm font-medium text-slate-700">Endereço MAC</label>
+                                            <input value={formData.mac_address} onChange={e => handleMacChange(e.target.value)} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono text-sm uppercase" placeholder="Ex: AA:BB:CC:DD:EE:FF" />
+                                        </div>
                                     </div>
-                                    <div className="space-y-1.5">
-                                        <label className="text-sm font-medium text-slate-700">Estado de Conservação</label>
-                                        <select value={formData.condition} onChange={e => setFormData({ ...formData, condition: e.target.value })} className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                                            <option value="Novo">Novo (Na caixa)</option>
-                                            <option value="Bom">Bom (Uso diário leve)</option>
-                                            <option value="Marcas de Uso">Marcas de Uso / Desgastado</option>
-                                            <option value="Danificado">Danificado (Para sucata/peças)</option>
-                                        </select>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4 border-t border-slate-100">
+                                        <div className="space-y-1.5">
+                                            <label className="text-sm font-medium text-slate-700">Condição do Equipamento</label>
+                                            <select value={formData.condition} onChange={e => setFormData({ ...formData, condition: e.target.value })} className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                                                <option value="Novo">Novo na Caixa</option>
+                                                <option value="Bom (Uso diário)">Bom (Uso diário)</option>
+                                                <option value="Marcas de Uso">Marcas de Uso</option>
+                                                <option value="Requer Reparo">Requer Reparo / Avaria</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-sm font-medium text-slate-700">Status Operacional</label>
+                                            <select value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })} className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                                                <option value="Ativo">Ativo</option>
+                                                <option value="Manutenção">Manutenção</option>
+                                                <option value="Estoque">Estoque</option>
+                                                <option value="Inativo">Inativo / Descartado</option>
+                                            </select>
+                                        </div>
                                     </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4 border-t border-slate-100">
+                                        <div className="space-y-1.5">
+                                            <label className="text-sm font-medium text-slate-700">Data de Aquisição</label>
+                                            <input value={formData.purchase_date} onChange={e => setFormData({ ...formData, purchase_date: e.target.value })} type="date" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm text-slate-700" />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-sm font-medium text-slate-700">Fim da Garantia</label>
+                                            <input value={formData.warranty_date} onChange={e => setFormData({ ...formData, warranty_date: e.target.value })} type="date" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm text-slate-700" />
+                                        </div>
+                                    </div>
+
                                     <div className="space-y-1.5 flex flex-col justify-end">
                                         <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5"><User size={14} className="text-slate-400" />Usuário / Responsável Atual</label>
                                         <input value={formData.responsible_user} onChange={e => setFormData({ ...formData, responsible_user: e.target.value })} type="text" className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500" placeholder="Ex: João (Contabilidade)" />

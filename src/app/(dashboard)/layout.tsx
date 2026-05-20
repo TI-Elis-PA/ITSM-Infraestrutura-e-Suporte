@@ -28,7 +28,7 @@ const NAV_ITEMS = [
     { href: "/almoxarifado", icon: <Archive size={18} />, label: "Almoxarifado TI", category: "Geral" },
     { href: "/wiki", icon: <Book size={18} />, label: "Base de Conhecimento", category: "Geral" },
     { href: "/slas", icon: <Calendar size={18} />, label: "Contratos & Lifecycle", category: "Geral" },
-    { href: "/automações", icon: <ShieldAlert size={18} />, label: "Centro de Alertas & IA", category: "Geral" },
+    { href: "/automacoes", icon: <ShieldAlert size={18} />, label: "Centro de Alertas & IA", category: "Geral" },
     { href: "/assistente", icon: <BrainCircuit size={18} />, label: "Assistente IA", category: "IA", highlight: true },
     { href: "/relatorios", icon: <FileText size={18} />, label: "Report Executivo", category: "Relatórios" },
 ];

@@ -1,11 +1,47 @@
 "use client";
 
-import React, { useState } from "react";
-import { Download, FileText, CheckCircle2, AlertTriangle, ArrowRight } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Download, FileText, CheckCircle2, AlertTriangle, ArrowRight, Wrench } from "lucide-react";
 import jsPDF from "jspdf";
+import { supabase } from '@/lib/supabase';
 
 export default function RelatoriosPage() {
     const [isGenerating, setIsGenerating] = useState(false);
+    const [stats, setStats] = useState({
+        chamadosResolvidos: 0,
+        manutencoes: 0,
+        incidentesCriticos: 0
+    });
+
+    useEffect(() => {
+        const loadStats = async () => {
+            // Chamados resolvidos
+            const { count: resolvidos } = await supabase
+                .from('chamados')
+                .select('*', { count: 'exact', head: true })
+                .eq('status', 'Resolvido');
+            
+            // Ativos em manutenção
+            const { count: manutencoes } = await supabase
+                .from('ativos')
+                .select('*', { count: 'exact', head: true })
+                .eq('status', 'Manutenção');
+
+            // Chamados críticos não resolvidos
+            const { count: criticos } = await supabase
+                .from('chamados')
+                .select('*', { count: 'exact', head: true })
+                .neq('status', 'Resolvido')
+                .ilike('priority', '%Crítica%');
+            
+            setStats({
+                chamadosResolvidos: resolvidos || 0,
+                manutencoes: manutencoes || 0,
+                incidentesCriticos: criticos || 0
+            });
+        };
+        loadStats();
+    }, []);
 
     const generatePDF = () => {
         setIsGenerating(true);
@@ -48,20 +84,20 @@ export default function RelatoriosPage() {
 
             doc.rect(15, 120, 85, 30);
             doc.setFontSize(14);
-            doc.text("Chamados Resolvidos: 48", 20, 132);
+            doc.text(`Chamados Resolvidos: ${stats.chamadosResolvidos}`, 20, 132);
             doc.setFontSize(10);
-            doc.text("+15% comparado a semana anterior", 20, 142);
+            doc.text("Total geral do sistema", 20, 142);
 
             doc.rect(110, 120, 85, 30);
             doc.setFontSize(14);
-            doc.text("Disponibilidade (Uptime): 99.9%", 115, 132);
+            doc.text(`Ativos em Manutenção: ${stats.manutencoes}`, 115, 132);
             doc.setFontSize(10);
-            doc.text("0 paradas não programadas", 115, 142);
+            doc.text(`${stats.incidentesCriticos} incidentes críticos pendentes`, 115, 142);
 
             // Fechamento
             doc.setFontSize(10);
             doc.setTextColor(100, 116, 139);
-            doc.text(`Gerado via ITSM Local em: ${new Date().toLocaleDateString()}`, 15, 280);
+            doc.text(`Gerado via ITSM Local em: ${new Date().toLocaleDateString('pt-BR')}`, 15, 280);
 
             doc.save("Relatorio_Executivo_TISemanal.pdf");
             setIsGenerating(false);
@@ -86,22 +122,22 @@ export default function RelatoriosPage() {
 
                     <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 mb-8">
                         <div className="flex justify-between items-center mb-4">
-                            <span className="text-sm font-semibold uppercase tracking-wider text-slate-500">Período Avaliado</span>
-                            <span className="text-sm font-medium text-slate-800">14/Out até 20/Out</span>
+                            <span className="text-sm font-semibold uppercase tracking-wider text-slate-500">Métricas Atuais</span>
+                            <span className="text-sm font-medium text-slate-800">Em tempo real</span>
                         </div>
 
                         <ul className="space-y-3">
-                            <li className="flex gap-3 text-sm text-slate-700 font-medium">
+                            <li className="flex gap-3 text-sm text-slate-700 font-medium items-center">
                                 <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
-                                48 Chamados resolvidos detectados
+                                {stats.chamadosResolvidos} Chamados resolvidos no total
                             </li>
-                            <li className="flex gap-3 text-sm text-slate-700 font-medium">
-                                <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
-                                2 Paradas de manutenção registradas
+                            <li className="flex gap-3 text-sm text-slate-700 font-medium items-center">
+                                <Wrench size={18} className="text-amber-500 shrink-0" />
+                                {stats.manutencoes} Equipamentos em manutenção
                             </li>
-                            <li className="flex gap-3 text-sm text-slate-700 font-medium">
-                                <AlertTriangle size={18} className="text-amber-500 shrink-0" />
-                                1 Incidente Crítico aguardando fechamento (Aviso)
+                            <li className="flex gap-3 text-sm text-slate-700 font-medium items-center">
+                                <AlertTriangle size={18} className={stats.incidentesCriticos > 0 ? "text-rose-500 shrink-0" : "text-emerald-500 shrink-0"} />
+                                {stats.incidentesCriticos} Incidentes Críticos pendentes
                             </li>
                         </ul>
                     </div>

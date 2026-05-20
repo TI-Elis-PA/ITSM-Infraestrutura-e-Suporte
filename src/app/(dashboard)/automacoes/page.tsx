@@ -4,7 +4,12 @@ import React, { useState } from 'react';
 import { Zap, Send, BellRing, Smartphone, ShieldAlert, CheckCircle2, MoreVertical, Plus } from 'lucide-react';
 
 export default function AutomationsPage() {
-    const [rules, setRules] = useState<any[]>([]);
+    const [rules, setRules] = useState<any[]>([
+        { id: 1, name: 'Alerta de Parada de Rede (Switches)', trigger: 'Ping falhar por 3min', channel: 'WhatsApp', target: 'Grupo Plantão TI', status: 'Ativo' },
+        { id: 2, name: 'Chamados VIP (Diretoria)', trigger: 'Novo chamado do Setor "Diretoria"', channel: 'WhatsApp', target: 'Gestor de TI', status: 'Ativo' },
+        { id: 3, name: 'Estoque Mínimo de Toners', trigger: 'Qtd toner < Min', channel: 'Telegram', target: 'Almoxarifado TI', status: 'Ativo' },
+        { id: 4, name: 'Aviso de SLA Estourando', trigger: 'Chamado aberto > 4h', channel: 'Telegram', target: 'Analistas N2', status: 'Pausado' },
+    ]);
 
     return (
         <div className="p-8 space-y-8">
