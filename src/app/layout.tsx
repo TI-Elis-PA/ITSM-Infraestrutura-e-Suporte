@@ -6,7 +6,7 @@ import Copilot from "@/components/Copilot";
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
 
 export const metadata: Metadata = {
-    title: "ITSM Pro",
+    title: "ITSM Pro Infrastructure",
     description: "Sistema Avançado de Gestão de TI",
 };
 
